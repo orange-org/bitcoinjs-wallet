@@ -1,6 +1,6 @@
 {
   "name": "bitcoinjs-wallet",
-  "version": "0.0.0-see-the-releases-page-on-github",
+  "version": "1.0",
   "description": "A Bitcoin wallet library built with BitcoinJS",
   "license": "Unlicense",
   "engines": {
@@ -8,7 +8,8 @@
     "npm": "^6.0.0"
   },
   "scripts": {
-    "test": "jest"
+    "test": "jest",
+    "test:watch": "jest --watch"
   },
   "devDependencies": {
     "@types/jest": "^25.1.1",
@@ -23,7 +24,11 @@
     "ts-jest": "^25.5.1",
     "typescript": "^3.7.5"
   },
-  "dependencies": {},
+  "dependencies": {
+    "bip32": "^2.0.5",
+    "bip39": "^3.0.2",
+    "bitcoinjs-lib": "^5.1.10"
+  },
   "husky": {
     "hooks": {
       "pre-commit": "lint-staged"
