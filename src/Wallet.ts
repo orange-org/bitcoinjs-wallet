@@ -1,68 +1,252 @@
 import * as bip39 from 'bip39';
 import * as bip32 from 'bip32';
-import * as bjs from 'bitcoinjs-lib';
+import * as bitcoinjs from 'bitcoinjs-lib';
+import coinSelectAccumulative, { Target } from 'coinselect/accumulative';
+import { BlockchainService, Utxo } from './BlockchainService';
 
-type WalletConfigNoHdNode = {
-  derivationPath?: string;
-  network?: bjs.Network;
+export type AddressMetadata = {
+  address: string;
+  derivationPath: string;
+  publicKey: Buffer;
 };
 
-type WalletConfig = WalletConfigNoHdNode & {
-  hdNode: bip32.BIP32Interface;
+export type WalletStats = {
+  balance: number;
+  pendingBalance: number;
+  nextUnusedAddress: AddressMetadata;
+  nextUnusedChangeAddress: AddressMetadata;
+  addresses: AddressMetadata[];
+  changeAddresses: AddressMetadata[];
+  addressesWithUtxo: AddressMetadata[];
 };
+
+export type UtxoWithMetadata = Utxo & {
+  address: string;
+  derivationPath: string;
+};
+
+export type AddressCollectionStats = Omit<
+  WalletStats,
+  'nextUnusedChangeAddress' | 'changeAddresses'
+>;
 
 export class Wallet {
-  hdNode: bip32.BIP32Interface;
+  constructor(
+    private blockchainService: BlockchainService,
+    private gapLimit = 20,
+    private derivationPath = "m/84'/0'/0'",
+  ) {}
 
-  derivationPath: string;
+  generateMnemonic = () => bip39.generateMnemonic();
 
-  network: bjs.Network;
-
-  addresses: string[] = [];
-
-  constructor(config: WalletConfig) {
-    this.hdNode = config.hdNode;
-    this.derivationPath = config.derivationPath || 'm/84/0/0';
-    this.network = config.network || bjs.networks.bitcoin;
-  }
-
-  static async fromMnemonic(
-    mnemonic: string,
-    config: WalletConfigNoHdNode = {},
-  ) {
+  private createHdRoot = async (mnemonic: string) => {
     const seed = await bip39.mnemonicToSeed(mnemonic);
-    const hdNode = bip32.fromSeed(seed, config.network);
+    const hdRoot = bip32.fromSeed(seed);
 
-    return new Wallet({ ...config, hdNode });
-  }
+    return hdRoot;
+  };
 
-  static fromMasterPublicKey(
-    masterPublicKey: string,
-    config: WalletConfigNoHdNode = {},
-  ) {
-    const hdNode = bip32.fromBase58(masterPublicKey, config.network);
+  getMasterPublicKey = async (mnemonic: string) => {
+    const hdRoot = await this.createHdRoot(mnemonic);
+    const derivedNode = hdRoot.derivePath(this.derivationPath).neutered();
+    const masterPublicKey = derivedNode.toBase58();
 
-    return new Wallet({ ...config, hdNode });
-  }
+    return masterPublicKey;
+  };
 
-  /**
-   * Makes network calls to 3PBP to look up the balances of addresses in this wallet.
-   */
-  async populateBalance() {
-    throw new Error('Not implemented');
-  }
+  private fetchAddressCollectionStats = async (
+    node: bip32.BIP32Interface,
+  ): Promise<AddressCollectionStats> => {
+    let gap = 0;
+    let addressIndex = 0;
+    let balance = 0;
+    let pendingBalance = 0;
+    let addresses: AddressMetadata[] = [];
+    let addressesWithUtxo: AddressMetadata[] = [];
+    let nextUnusedAddress: AddressMetadata | null = null;
+    while (gap < this.gapLimit) {
+      const childNode = node.derive(addressIndex);
+      const { address } = bitcoinjs.payments.p2wpkh({
+        pubkey: childNode.publicKey,
+      });
+      // white
+      const addressStats = await this.blockchainService.fetchAddressStats(
+        address!,
+      );
 
-  generateAddress() {
-    const nextIndex = this.addresses.length;
-    const childPublicKey = this.hdNode.derivePath(
-      `${this.derivationPath}/0/${nextIndex}`,
-    ).publicKey;
-    const { address } = bjs.payments.p2wpkh({ pubkey: childPublicKey });
+      const { chain_stats, mempool_stats } = addressStats;
 
-    if (address == undefined) {
-      throw new Error('Could not create address');
+      const isUsedAddress =
+        chain_stats.funded_txo_count > 0 ||
+        chain_stats.spent_txo_count > 0 ||
+        mempool_stats.funded_txo_count > 0 ||
+        mempool_stats.spent_txo_count > 0;
+
+      const addressBalance =
+        chain_stats.funded_txo_sum - chain_stats.spent_txo_sum;
+
+      balance += addressBalance;
+      pendingBalance +=
+        mempool_stats.funded_txo_sum - mempool_stats.spent_txo_sum;
+
+      const addressMetadata = {
+        address: address!,
+        derivationPath: `${node.index}/${addressIndex}`,
+        publicKey: childNode.publicKey,
+      };
+
+      addresses.push(addressMetadata);
+
+      if (addressBalance > 0) {
+        addressesWithUtxo.push(addressMetadata);
+      }
+
+      if (!isUsedAddress && !nextUnusedAddress) {
+        nextUnusedAddress = addressMetadata;
+      }
+
+      if (!isUsedAddress) {
+        gap++;
+      } else {
+        gap = 0;
+      }
+
+      addressIndex++;
     }
 
-    this.addresses.push(address);
-  }
+    return {
+      balance,
+      pendingBalance,
+      addresses,
+      addressesWithUtxo,
+      nextUnusedAddress: nextUnusedAddress!,
+    };
+  };
+
+  fetchWalletStats = async (masterPublicKey: string): Promise<WalletStats> => {
+    const hdNode = bip32.fromBase58(masterPublicKey);
+    const [addressesData, changeAddressesData] = await Promise.all([
+      this.fetchAddressCollectionStats(hdNode.derive(0)),
+      this.fetchAddressCollectionStats(hdNode.derive(1)),
+    ]);
+
+    const balance = addressesData.balance + changeAddressesData.balance;
+    const pendingBalance =
+      addressesData.pendingBalance + changeAddressesData.pendingBalance;
+    const nextUnusedAddress = addressesData.nextUnusedAddress;
+    const nextUnusedChangeAddress = changeAddressesData.nextUnusedAddress;
+    const addresses = addressesData.addresses;
+    const changeAddresses = changeAddressesData.addresses;
+    const addressesWithUtxo = addressesData.addressesWithUtxo.concat(
+      changeAddressesData.addressesWithUtxo,
+    );
+
+    return {
+      balance,
+      pendingBalance,
+      nextUnusedAddress,
+      nextUnusedChangeAddress,
+      addresses,
+      changeAddresses,
+      addressesWithUtxo,
+    };
+  };
+
+  fetchUtxos = async (
+    addressesWithUtxo: AddressMetadata[],
+  ): Promise<UtxoWithMetadata[]> => {
+    const totalUtxos = [];
+
+    for (const addressWithUtxo of addressesWithUtxo) {
+      const utxos = await this.blockchainService.fetchAddressUtxos(
+        addressWithUtxo.address,
+      );
+
+      for (const utxo of utxos) {
+        totalUtxos.push({
+          ...utxo,
+          address: addressWithUtxo.address,
+          derivationPath: addressWithUtxo.derivationPath,
+        });
+      }
+    }
+
+    return totalUtxos;
+  };
+
+  private findPublicKeyForAddress = (
+    address: string,
+    addressesMetadata: AddressMetadata[],
+  ) =>
+    addressesMetadata.find(
+      (addressMetadata) => address === addressMetadata.address,
+    )?.publicKey;
+
+  createTransaction = async (
+    addressesWithUtxo: AddressMetadata[],
+    targetAddress: Target,
+    feeRate: number,
+    changeAddress: string,
+    mnemonic: string,
+  ) => {
+    const utxos = await this.fetchUtxos(addressesWithUtxo);
+    const { inputs, outputs, fee } = coinSelectAccumulative(
+      utxos,
+      [targetAddress],
+      feeRate,
+    );
+    const hdRoot = await this.createHdRoot(mnemonic);
+
+    if (!inputs || !outputs) {
+      throw new Error('Not enough balance. Try sending a smaller amount.');
+    }
+
+    const psbt = new bitcoinjs.Psbt();
+
+    for (const input of inputs) {
+      const inputPublicKey = this.findPublicKeyForAddress(
+        input.address,
+        addressesWithUtxo,
+      );
+
+      if (!inputPublicKey) {
+        throw new Error('Could not find public key for input');
+      }
+
+      const p2wpkh = bitcoinjs.payments.p2wpkh({ pubkey: inputPublicKey });
+
+      psbt.addInput({
+        hash: input.txid,
+        index: input.vout,
+        bip32Derivation: [
+          {
+            masterFingerprint: hdRoot.fingerprint,
+            path: `${this.derivationPath}/${input.derivationPath}`,
+            pubkey: inputPublicKey,
+          },
+        ],
+        witnessUtxo: {
+          script: p2wpkh.output!,
+          value: input.value,
+        },
+      });
+    }
+
+    for (const output of outputs) {
+      if (!output.address) {
+        output.address = changeAddress;
+      }
+
+      psbt.addOutput({
+        address: output.address,
+        value: output.value,
+      });
+    }
+
+    await psbt.signAllInputsHDAsync(hdRoot);
+
+    const transaction = psbt.finalizeAllInputs().extractTransaction();
+
+    return { transaction, inputs, outputs, fee };
+  };
 }

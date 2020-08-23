@@ -1,26 +1,90 @@
 import { Wallet } from 'src/Wallet';
+import { esplora } from 'src/Esplora';
+import { MockNetwork } from 'tests/testUtils/MockNetwork';
 
-const mnemonic =
-  'verify never climb able arch joy eight stand razor nuclear parade park';
+const testMnemonic =
+  'base index concert culture silver say return vote dial pepper cloud kingdom fly outer tornado';
 
 describe('Wallet basics', () => {
-  it('can be initialized with a BIP32 node', async () => {
-    const wallet = await Wallet.fromMnemonic(mnemonic);
-
-    expect(wallet.hdNode.chainCode).toBeDefined();
+  beforeAll(() => {
+    MockNetwork.start();
+  });
+  it('requires a blockchain service for initialization', async () => {
+    expect(() => new Wallet(esplora)).not.toThrow();
   });
 
-  it('can generate receiving addresses', async () => {
-    const wallet = await Wallet.fromMnemonic(mnemonic);
+  it('can retrieve complete wallet statistics for a master public key', async () => {
+    const wallet = new Wallet(esplora);
 
-    wallet.generateAddress();
-    wallet.generateAddress();
+    const masterPublicKey = await wallet.getMasterPublicKey(testMnemonic);
+    const walletStatistics = await wallet.fetchWalletStats(masterPublicKey);
 
-    expect(wallet.addresses[0]).toEqual(
-      'bc1q0us48prke8q5duz0rm45z9aax3aztsd6xde6l9',
+    expect(walletStatistics).toHaveProperty('balance'); // Confirmed balance
+    expect(walletStatistics).toHaveProperty('pendingBalance'); // Mempool balance
+    expect(walletStatistics).toHaveProperty('nextUnusedAddress');
+    expect(walletStatistics).toHaveProperty('nextUnusedChangeAddress');
+    expect(walletStatistics).toHaveProperty('addresses');
+    expect(walletStatistics).toHaveProperty('changeAddresses');
+    expect(walletStatistics).toHaveProperty('addressesWithUtxo');
+  });
+
+  it('populates the fetched addresses with useful metadata', async () => {
+    const wallet = new Wallet(esplora);
+
+    const masterPublicKey = await wallet.getMasterPublicKey(testMnemonic);
+    const walletStatistics = await wallet.fetchWalletStats(masterPublicKey);
+
+    const {
+      addresses,
+      changeAddresses,
+      nextUnusedChangeAddress,
+      nextUnusedAddress,
+      addressesWithUtxo,
+    } = walletStatistics;
+
+    for (const addressMetadata of [
+      addresses[0],
+      changeAddresses[0],
+      addressesWithUtxo[0],
+      nextUnusedAddress,
+      nextUnusedChangeAddress,
+    ]) {
+      expect(addressMetadata.address).toBeInstanceOf(String);
+      expect(addressMetadata.derivationPath).toBeInstanceOf(String);
+      expect(addressMetadata.publicKey).toBeInstanceOf(Buffer);
+    }
+  });
+
+  it('can fetch utxos', async () => {
+    const wallet = new Wallet(esplora);
+
+    const masterPublicKey = await wallet.getMasterPublicKey(testMnemonic);
+    const walletStatistics = await wallet.fetchWalletStats(masterPublicKey);
+
+    const utxos = await wallet.fetchUtxos(walletStatistics.addressesWithUtxo);
+    const utxo = utxos[0];
+
+    expect(utxo.address).toBeInstanceOf(String);
+    expect(utxo.derivationPath).toBeInstanceOf(String);
+    expect(utxo.txid).toBeInstanceOf(String);
+    expect(utxo.value).toBeInstanceOf(Number);
+    expect(utxo.vout).toBeInstanceOf(Number);
+  });
+
+  it('can create a signed transaction', async () => {
+    const wallet = new Wallet(esplora);
+
+    const masterPublicKey = await wallet.getMasterPublicKey(testMnemonic);
+    const walletStatistics = await wallet.fetchWalletStats(masterPublicKey);
+
+    const transaction = await wallet.createTransaction(
+      walletStatistics.addressesWithUtxo,
+      { address: 'sometargetadd', value: 40000 },
+      40,
+      walletStatistics.nextUnusedChangeAddress.address,
+      testMnemonic,
     );
-    expect(wallet.addresses[1]).toEqual(
-      'bc1q87acgzdfkcsgkkrmq69cx3p3ddkk57e36u0dc0',
-    );
+
+    expect(transaction).toBeDefined();
   });
 });
