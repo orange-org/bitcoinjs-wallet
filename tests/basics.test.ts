@@ -49,8 +49,8 @@ describe('Wallet basics', () => {
       nextUnusedAddress,
       nextUnusedChangeAddress,
     ]) {
-      expect(addressMetadata.address).toBeInstanceOf(String);
-      expect(addressMetadata.derivationPath).toBeInstanceOf(String);
+      expect(typeof addressMetadata.address).toBe('string');
+      expect(typeof addressMetadata.derivationPath).toBe('string');
       expect(addressMetadata.publicKey).toBeInstanceOf(Buffer);
     }
   });
@@ -64,11 +64,11 @@ describe('Wallet basics', () => {
     const utxos = await wallet.fetchUtxos(walletStatistics.addressesWithUtxo);
     const utxo = utxos[0];
 
-    expect(utxo.address).toBeInstanceOf(String);
-    expect(utxo.derivationPath).toBeInstanceOf(String);
-    expect(utxo.txid).toBeInstanceOf(String);
-    expect(utxo.value).toBeInstanceOf(Number);
-    expect(utxo.vout).toBeInstanceOf(Number);
+    expect(typeof utxo.address).toBe('string');
+    expect(typeof utxo.derivationPath).toBe('string');
+    expect(typeof utxo.txid).toBe('string');
+    expect(typeof utxo.value).toBe('number');
+    expect(typeof utxo.vout).toBe('number');
   });
 
   it('can create a signed transaction', async () => {
@@ -77,14 +77,14 @@ describe('Wallet basics', () => {
     const masterPublicKey = await wallet.getMasterPublicKey(testMnemonic);
     const walletStatistics = await wallet.fetchWalletStats(masterPublicKey);
 
-    const transaction = await wallet.createTransaction(
+    const transactionMetadata = await wallet.createTransaction(
       walletStatistics.addressesWithUtxo,
-      { address: 'sometargetadd', value: 40000 },
+      { address: '3Qfh9KXTRyJ33aHGb9b66X6UHeZqAKQu1t', value: 40000 },
       40,
       walletStatistics.nextUnusedChangeAddress.address,
       testMnemonic,
     );
 
-    expect(transaction).toBeDefined();
+    expect(transactionMetadata).toBeDefined();
   });
 });

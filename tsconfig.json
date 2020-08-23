@@ -1,7 +1,7 @@
 {
   "compilerOptions": {
-    "allowSyntheticDefaultImports": true,
     "moduleResolution": "Node",
+    "esModuleInterop": true,
 
     "strict": true,
     "noImplicitReturns": true,
@@ -25,7 +25,7 @@
     "pretty": true,
     "baseUrl": ".",
     "declaration": false,
-    "importHelpers": false,
+    "importHelpers": true,
     "noEmitHelpers": true,
     "removeComments": true,
     "stripInternal": true,

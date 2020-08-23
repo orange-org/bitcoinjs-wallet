@@ -69,7 +69,7 @@ export class Wallet {
       const { address } = bitcoinjs.payments.p2wpkh({
         pubkey: childNode.publicKey,
       });
-      // white
+
       const addressStats = await this.blockchainService.fetchAddressStats(
         address!,
       );
