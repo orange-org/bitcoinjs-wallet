@@ -9,6 +9,7 @@ describe('Wallet basics', () => {
   beforeAll(() => {
     MockNetwork.start();
   });
+
   it('requires a blockchain service for initialization', async () => {
     expect(() => new Wallet(esplora)).not.toThrow();
   });
