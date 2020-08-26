@@ -37,7 +37,7 @@ export class Wallet {
     private derivationPath = "m/84'/0'/0'",
   ) {}
 
-  generateMnemonic = () => bip39.generateMnemonic();
+  static generateMnemonic = () => bip39.generateMnemonic();
 
   private createHdRoot = async (mnemonic: string) => {
     const seed = await bip39.mnemonicToSeed(mnemonic);
@@ -248,5 +248,15 @@ export class Wallet {
     const transaction = psbt.finalizeAllInputs().extractTransaction();
 
     return { transaction, inputs, outputs, fee };
+  };
+
+  static isValidMasterPublicKey = (masterPublicKey: string) => {
+    try {
+      bip32.fromBase58(masterPublicKey);
+    } catch (e) {
+      return false;
+    }
+
+    return true;
   };
 }

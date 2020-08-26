@@ -88,4 +88,13 @@ describe('Wallet basics', () => {
 
     expect(transactionMetadata).toBeDefined();
   });
+
+  it('can validate a master public key', async () => {
+    expect(Wallet.isValidMasterPublicKey('iAmVaLiDkEy')).toBe(false);
+    expect(
+      Wallet.isValidMasterPublicKey(
+        'xpub6CtwgT3d6wCjjv2SDFhBqfjGgFEzhrNfhcTaTpxrFgxpAviRoSDW7tq6v5tXWvGpf4bXmyQnbcX13JTuAfakQyD4zsERapRzkYXaWFiSmeQ',
+      ),
+    ).toBe(true);
+  });
 });
