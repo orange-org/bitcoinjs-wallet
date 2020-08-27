@@ -1,0 +1,41 @@
+{
+  "compilerOptions": {
+    "moduleResolution": "Node",
+    "esModuleInterop": true,
+
+    "strict": true,
+    "noImplicitReturns": true,
+    "forceConsistentCasingInFileNames": true,
+    "noFallthroughCasesInSwitch": true,
+    "noEmitOnError": true,
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
+
+    "module": "esnext",
+    "target": "ES2017",
+    "sourceMap": true,
+
+    "skipLibCheck": true,
+
+    "allowJs": true,
+    "checkJs": true,
+
+    "jsx": "preserve",
+
+    "pretty": true,
+    "baseUrl": ".",
+    "declaration": false,
+    "importHelpers": true,
+    "noEmitHelpers": true,
+    "removeComments": true,
+    "stripInternal": true,
+    "resolveJsonModule": true,
+
+    "paths": {
+      "src/*": ["src/*"],
+      "tests/*": ["tests/*"]
+    }
+  },
+
+  "include": ["src/**/*", "tests/**/*"]
+}
